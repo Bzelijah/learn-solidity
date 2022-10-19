@@ -4,21 +4,32 @@ pragma solidity ^0.8.8;
 
 import "./PriceConverter.sol";
 
+error NotOwner();
+error SendedNotEnough();
+error CallFailed();
+
 contract FundMe {
     using PriceConverter for uint256;
 
-    uint256 public minimumUSD = 50 * 1e18;
+    uint256 public constant MINIMUM_USD = 50 * 1e18;
     address[] public funders;
     mapping(address => uint256) public addressToAmountFunded;
-
-    address public owner;
+    address public immutable i_owner;
 
     constructor() {
-        owner = msg.sender;
+        i_owner = msg.sender;
+    }
+
+    receive() external payable {
+        fund();
+    }
+
+    fallback() external payable {
+        fund();
     }
 
     function fund() public payable {
-        require(msg.value.getConversionRate() >= minimumUSD, "Didn't send enough!"); // 1e18 == 1 * 10 ** 18 == 1000000000000000000;
+        if (msg.value.getConversionRate() <= MINIMUM_USD) { revert SendedNotEnough(); }
         funders.push(msg.sender);
         addressToAmountFunded[msg.sender] = msg.value;
     }
@@ -32,11 +43,11 @@ contract FundMe {
         funders = new address[](0);
 
         (bool callSuccess,) = payable(msg.sender).call{value: address(this).balance}("");
-        require(callSuccess, "Call failed");
+        if (!callSuccess) { revert CallFailed(); }
     }
 
     modifier onlyOwner() {
-        require(msg.sender == owner, "Sender is not owner!");
+        if (msg.sender != i_owner) { revert NotOwner(); }
         _;
     }
 }
